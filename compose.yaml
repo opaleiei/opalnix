@@ -1,0 +1,854 @@
+services:
+  # =================================================================
+  # 1. CORE NETWORKING, PROXY & SECURITY
+  # =================================================================
+
+  caddy:
+    image: serfriz/caddy-duckdns:latest
+    container_name: caddy
+    restart: unless-stopped
+    cpu_shares: 512
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - /home/op/Dockerapps_config/Configs/caddy/Caddyfile:/etc/caddy/Caddyfile
+      - /home/op/Dockerapps_config/Configs/caddy/data:/data
+      - /home/op/Dockerapps_config/Configs/caddy/config:/config
+    environment:
+      - TZ=Asia/Bangkok
+      - DUCKDNS_TOKEN=1bc601b4-bb2f-42a3-b179-62a0f53e40cf
+    networks:
+      - homelab
+
+  duckdns:
+    image: lscr.io/linuxserver/duckdns:latest
+    container_name: duckdns
+    restart: unless-stopped
+    network_mode: host
+    cpu_shares: 256
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Bangkok
+      - SUBDOMAINS=opaleiei
+      - TOKEN=1bc601b4-bb2f-42a3-b179-62a0f53e40cf
+      - UPDATE_IP=ipv4
+      - LOG_FILE=false
+    volumes:
+      - /home/op/Dockerapps_config/Configs/duckdns:/config
+
+  technitium:
+    image: technitium/dns-server:latest
+    container_name: technitium
+    hostname: technitium
+    restart: unless-stopped
+    cpu_shares: 768
+    environment:
+      - TZ=Asia/Bangkok
+      - DNS_SERVER_DOMAIN=technitium.home
+      - DNS_SERVER_ADMIN_PASSWORD=0804497089Opal!
+      - DNS_SERVER_PREFER_IPV6=false
+    volumes:
+      - /home/op/Dockerapps_config/Configs/technitium:/etc/dns
+    networks:
+      macvlan_lan:
+        ipv4_address: 192.168.1.53
+
+  wg-easy:
+    image: ghcr.io/wg-easy/wg-easy:15
+    container_name: wg-easy
+    restart: unless-stopped
+    cpu_shares: 512
+    environment:
+      - TZ=Asia/Bangkok
+      - PORT=51821
+      - WG_HOST=opaleiei.duckdns.org
+      - INSECURE=true
+    volumes:
+      - /home/op/Dockerapps_config/Configs/wireguard:/etc/wireguard
+      - /lib/modules:/lib/modules:ro
+    ports:
+      - "51820:51820/udp"
+      - "51821:51821/tcp"
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv6.conf.all.forwarding=1
+      - net.ipv6.conf.default.forwarding=1
+    networks:
+      wg:
+        ipv4_address: 10.42.42.42
+        ipv6_address: fdcc:ad94:bacf:61a3::2a
+
+  hbbs:
+    image: rustdesk/rustdesk-server:latest
+    container_name: hbbs
+    command: hbbs
+    restart: unless-stopped
+    cpu_shares: 256
+    network_mode: "host"
+    volumes:
+      - /home/op/Dockerapps_config/Configs/rustdesk:/root
+    depends_on:
+      - hbbr
+
+  hbbr:
+    image: rustdesk/rustdesk-server:latest
+    container_name: hbbr
+    command: hbbr
+    restart: unless-stopped
+    cpu_shares: 256
+    network_mode: "host"
+    volumes:
+      - /home/op/Dockerapps_config/Configs/rustdesk:/root
+
+  # =================================================================
+  # 2. MEDIA SERVERS & STREAMING
+  # =================================================================
+
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    cpu_shares: 512
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Bangkok
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    ports:
+      - "8096:8096"
+    volumes:
+      - /home/op/Dockerapps_config/Configs/jellyfin:/config
+      - /home/op/Dockerapps_config/Configs/jellyfin/custom-cont-init.d:/custom-cont-init.d
+      - /mnt/899c9a2d-9994-4ec8-ab18-2d140e7c4c24/Desktop/Dockerapps:/data
+      - /mnt/ac966b9d-d480-46e0-898f-5c32b90a7d11/torrent:/hdd2
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - homelab
+
+  seerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    container_name: seerr
+    user: "1000:1000"
+    init: true
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - TZ=Asia/Bangkok
+      - LOG_LEVEL=debug
+      - PORT=5055
+    ports:
+      - "5055:5055"
+    volumes:
+      - /home/op/Dockerapps_config/Configs/seerr:/app/config
+    networks:
+      - homelab
+
+  navidrome:
+    image: deluan/navidrome:latest
+    container_name: navidrome
+    user: "1000:1000"
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - TZ=Asia/Bangkok
+      - ND_SCANSCHEDULE=1h
+      - ND_LOGLEVEL=info
+      - ND_SESSIONTIMEOUT=24h
+      - ND_BASEURL=
+    ports:
+      - "4533:4533"
+    volumes:
+      - /home/op/Dockerapps_config/Configs/navidrome:/data
+      - /mnt/899c9a2d-9994-4ec8-ab18-2d140e7c4c24/Desktop/Dockerapps/media/music:/music:ro
+    networks:
+      - homelab
+
+  # =================================================================
+  # 3. ARR AUTOMATION & INDEXERS
+  # =================================================================
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Bangkok
+    volumes:
+      - /home/op/Dockerapps_config/Configs/sonarr:/config
+      - /mnt/899c9a2d-9994-4ec8-ab18-2d140e7c4c24/Desktop/Dockerapps:/data
+    ports:
+      - "8989:8989"
+    networks:
+      - homelab
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Bangkok
+    volumes:
+      - /home/op/Dockerapps_config/Configs/radarr:/config
+      - /mnt/899c9a2d-9994-4ec8-ab18-2d140e7c4c24/Desktop/Dockerapps:/data
+    ports:
+      - "7878:7878"
+    networks:
+      - homelab
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Bangkok
+    volumes:
+      - /home/op/Dockerapps_config/Configs/bazarr:/config
+      - /mnt/899c9a2d-9994-4ec8-ab18-2d140e7c4c24/Desktop/Dockerapps:/data
+    ports:
+      - "6767:6767"
+    networks:
+      - homelab
+
+  prowlarr:
+    image: ghcr.io/hotio/prowlarr
+    container_name: prowlarr
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - UMASK=002
+      - TZ=Asia/Bangkok
+    ports:
+      - "9696:9696"
+    volumes:
+      - /home/op/Dockerapps_config/Configs/prowlarr:/config
+    networks:
+      - homelab
+
+  profilarr:
+    image: ghcr.io/dictionarry-hub/profilarr:latest
+    container_name: profilarr
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Bangkok
+      - ORIGIN=https://profilarr.opaleiei.duckdns.org
+    ports:
+      - "6868:6868"
+    volumes:
+      - /home/op/Dockerapps_config/Configs/profilarr:/config
+    networks:
+      - homelab
+
+  cleanuparr:
+    image: ghcr.io/cleanuparr/cleanuparr:latest
+    container_name: cleanuparr
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - PORT=11011
+      - BASE_PATH=
+      - PUID=1000
+      - PGID=1000
+      - UMASK=022
+      - TZ=Asia/Bangkok
+    ports:
+      - "11011:11011"
+    volumes:
+      - /home/op/Dockerapps_config/Configs/cleanuparr:/config
+      - /mnt/899c9a2d-9994-4ec8-ab18-2d140e7c4c24/Desktop/Dockerapps:/data
+    networks:
+      - homelab
+
+  # --- Translation Pipeline (Lingarr & LibreTranslate) ---
+  lingarr:
+    image: ghcr.io/lingarr-translate/lingarr:latest
+    container_name: lingarr
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - ASPNETCORE_URLS=http://+:9876
+      - DB_CONNECTION=mysql
+      - DB_HOST=lingarr-db
+      - DB_PORT=3306
+      - DB_DATABASE=lingarr
+      - DB_USERNAME=lingarr
+      - DB_PASSWORD=1234
+    ports:
+      - "9876:9876"
+    volumes:
+      - /mnt/899c9a2d-9994-4ec8-ab18-2d140e7c4c24/Desktop/Dockerapps:/data
+      - /home/op/Dockerapps_config/Configs/lingarr:/app/config
+    depends_on:
+      lingarr-db:
+        condition: service_healthy
+    networks:
+      - homelab
+
+  lingarr-db:
+    image: mariadb:latest
+    container_name: lingarr-db
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - MYSQL_DATABASE=lingarr
+      - MYSQL_USER=lingarr
+      - MYSQL_PASSWORD=1234
+      - MYSQL_ROOT_PASSWORD=1234
+    volumes:
+      - /home/op/Dockerapps_config/Configs/lingarr-db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-u$$MYSQL_USER", "-p$$MYSQL_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - homelab
+
+  libretranslate:
+    image: libretranslate/libretranslate:latest
+    container_name: libretranslate
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - LT_LOAD_ONLY=en,th,ru
+      - LT_UPDATE_MODELS=true
+    ports:
+      - "5000:5000"
+    volumes:
+      - /home/op/Dockerapps_config/Configs/libretranslate:/home/libretranslate/.local/share/argos-translate
+    networks:
+      - homelab
+
+  # --- FlareSolverr Alternative (Trawl & Redis) ---
+  trawl-redis:
+    image: redis:7-alpine
+    container_name: trawl-redis
+    restart: always
+    cpu_shares: 128
+    volumes:
+      - /home/op/Dockerapps_config/Configs/trawl-redis:/data
+    networks:
+      - homelab
+
+  trawl:
+    image: ghcr.io/germondai/trawl:latest
+    container_name: trawl
+    restart: always
+    cpu_shares: 128
+    ports:
+      - "8191:8191"
+    shm_size: 1gb
+    mem_limit: 3g
+    environment:
+      - REDIS_URL=redis://trawl-redis:6379
+      - BROWSER_POOL_SIZE=5
+      - BROWSER_ACQUIRE_TIMEOUT_MS=15000
+    depends_on:
+      - trawl-redis
+    networks:
+      - homelab
+
+  # =================================================================
+  # 4. DOWNLOADERS & CLIENTS
+  # =================================================================
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Bangkok
+      - WEBUI_PORT=8080
+      - DOCKER_MODS=ghcr.io/vuetorrent/vuetorrent-lsio-mod:latest
+    volumes:
+      - /home/op/Dockerapps_config/Configs/qbittorrent:/config
+      - /mnt/899c9a2d-9994-4ec8-ab18-2d140e7c4c24/Desktop/Dockerapps:/data
+      - /mnt/ac966b9d-d480-46e0-898f-5c32b90a7d11/torrent:/HDD2
+      - /home/op/Dockerapps_config/Configs/vueTorrent:/vuetorrent
+    ports:
+      - "8080:8080"
+      - "51413:51413"
+      - "51413:51413/udp"
+    networks:
+      - homelab
+
+  qui:
+    image: ghcr.io/autobrr/qui:latest
+    container_name: qui
+    user: "1000:1000"
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Bangkok
+    volumes:
+      - /home/op/Dockerapps_config/Configs/qui:/config
+      - /mnt/899c9a2d-9994-4ec8-ab18-2d140e7c4c24/Desktop/Dockerapps:/data
+    ports:
+      - "7476:7476"
+    networks:
+      - homelab
+
+  aria2-pro:
+    image: p3terx/aria2-pro:latest
+    container_name: aria2-pro
+    restart: unless-stopped
+    cpu_shares: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: 1m
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - UMASK_SET=022
+      - RPC_SECRET=1234
+      - RPC_PORT=6800
+      - LISTEN_PORT=6888
+      - DISK_CACHE=64M
+      - IPV6_MODE=false
+      - UPDATE_TRACKERS=true
+      - TZ=Asia/Bangkok
+    volumes:
+      - /home/op/Dockerapps_config/Configs/aria2:/config
+      - /mnt/899c9a2d-9994-4ec8-ab18-2d140e7c4c24/Desktop/Dockerapps/downloads:/downloads
+    ports:
+      - "6800:6800"
+      - "6888:6888"
+      - "6888:6888/udp"
+    networks:
+      - homelab
+
+  ariang:
+    image: p3terx/ariang:latest
+    container_name: ariang
+    restart: unless-stopped
+    cpu_shares: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: 1m
+    ports:
+      - "6880:6880"
+    depends_on:
+      - aria2-pro
+    networks:
+      - homelab
+
+  ytptube:
+    image: ghcr.io/arabcoders/ytptube:latest
+    container_name: ytptube
+    user: "1000:1000"
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - TZ=Asia/Bangkok
+      - YTP_TEMP_PATH=/downloads/tmp
+      - YTP_DOWNLOAD_PATH=/downloads
+    ports:
+      - "8083:8081"
+    volumes:
+      - /home/op/Dockerapps_config/Configs/ytptube:/config:rw
+      - /mnt/899c9a2d-9994-4ec8-ab18-2d140e7c4c24/Desktop/Dockerapps/downloads/yt-dlp:/downloads:rw
+    networks:
+      - homelab
+
+  # =================================================================
+  # 5. DASHBOARDS, UTILITIES & BACKUPS
+  # =================================================================
+
+  dynacat:
+    image: panonim/dynacat:latest
+    container_name: dynacat
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - TZ=Asia/Bangkok
+    volumes:
+      - /home/op/Dockerapps_config/Configs/dynacat/config:/app/config
+      - /home/op/Dockerapps_config/Configs/dynacat/assets:/app/assets
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "8086:8080"
+    networks:
+      - homelab
+
+  beszel:
+    image: henrygd/beszel:latest
+    container_name: beszel
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - TZ=Asia/Bangkok
+    volumes:
+      - /home/op/Dockerapps_config/Configs/beszel/data:/beszel_data
+    ports:
+      - "8090:8090"
+    networks:
+      - homelab
+
+  # Monitors CPU / GPU / RAM / disk. Runs on host networking so it can read
+  # real host network + disk stats, and uses the nvidia image so GPU usage
+  # (matching jellyfin's GPU) is picked up via NVML.
+  beszel-agent:
+    image: henrygd/beszel-agent-nvidia:latest
+    container_name: beszel-agent
+    restart: unless-stopped
+    cpu_shares: 256
+    networks:
+      - homelab
+    ports:
+      - "45876:45876"
+    depends_on:
+      - beszel
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - /home/op/Dockerapps_config/Configs/beszel/agent_data:/var/lib/beszel-agent
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /mnt/899c9a2d-9994-4ec8-ab18-2d140e7c4c24:/extra-filesystems/sda1__HDD1:ro
+      - /mnt/591f037c-255b-474b-bbc4-ac34dbe43c38:/extra-filesystems/sdb1__Backup:ro
+      - /mnt/ac966b9d-d480-46e0-898f-5c32b90a7d11:/extra-filesystems/sdc1__HDD2:ro
+    environment:
+      LISTEN: 45876
+      KEY: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPbRZq47MXnGJEzoe4cSTNxbQ1EfqlvtGM1SGghJkXez'
+      TOKEN: f04216de-8e05-42fa-9396-a8fe2dd6598f
+      HUB_URL: https://beszel.opaleiei.duckdns.org
+
+  dockhand:
+    image: fnsys/dockhand:latest
+    container_name: dockhand
+    restart: unless-stopped
+    cpu_shares: 256
+    ports:
+      - "2000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/op/Dockerapps_config/Configs/dockhand:/app/data
+      - /mnt/899c9a2d-9994-4ec8-ab18-2d140e7c4c24/Desktop/Dockerapps:/mnt/899c9a2d-9994-4ec8-ab18-2d140e7c4c24/Desktop/Dockerapps
+    networks:
+      - homelab
+
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - TZ=Asia/Bangkok
+      - SIGNUPS_ALLOWED=false
+      - DOMAIN=https://password.opaleiei.duckdns.org
+    volumes:
+      - /home/op/Dockerapps_config/Configs/vaultwarden:/data
+    ports:
+      - "8084:80"
+    networks:
+      - homelab
+
+  flatnotes:
+    image: dullage/flatnotes:latest
+    container_name: flatnotes
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Bangkok
+      - FLATNOTES_AUTH_TYPE=password
+      - FLATNOTES_USERNAME=admin
+      - FLATNOTES_PASSWORD=0804497089Opal!
+      - FLATNOTES_SECRET_KEY=aLongRandomSeriesOfCharactersasdsadasdddsw
+    volumes:
+      - /home/op/Dockerapps_config/Configs/flatnotes:/data
+    ports:
+      - "8088:8080"
+    networks:
+      - homelab
+
+  filebrowser:
+    image: gtstef/filebrowser:stable
+    container_name: filebrowser
+    user: "1000:1000"
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - TZ=Asia/Bangkok
+    volumes:
+      - /mnt/899c9a2d-9994-4ec8-ab18-2d140e7c4c24/Desktop/Dockerapps:/data
+      - /home/op/Dockerapps_config/Configs/filebrowser/data:/home/filebrowser/data
+    ports:
+      - "8082:80"
+    networks:
+      - homelab
+
+  duplicati:
+    image: lscr.io/linuxserver/duplicati:latest
+    container_name: duplicati
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Bangkok
+      - SETTINGS_ENCRYPTION_KEY=0804497089Opal!
+      - DUPLICATI__WEBSERVICE_ALLOWEDHOSTNAMES=*
+      - DUPLICATI__WEBSERVICE_PASSWORD=0804497089Opal!
+    ports:
+      - "8200:8200"
+    volumes:
+      - /home/op/Dockerapps_config/Configs/duplicati:/config
+      - /home/op:/home/op
+      - /mnt/ac966b9d-d480-46e0-898f-5c32b90a7d11/Backups:/Backups1
+      - /mnt/591f037c-255b-474b-bbc4-ac34dbe43c38/Backups2:/Backups2
+    networks:
+      - homelab
+
+  degoog:
+    image: ghcr.io/degoog-org/degoog:latest
+    container_name: degoog
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - TZ=Asia/Bangkok
+      - DEGOOG_DANGEROUSLY_NO_PASSWORD=true
+    volumes:
+      - /home/op/Dockerapps_config/Configs/degoog:/app/data
+    ports:
+      - "4444:4444"
+    networks:
+      - homelab
+
+  # =================================================================
+  # 6. PHOTOS & VIDEOS (IMMICH)
+  # =================================================================
+
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:release
+    container_name: immich_server
+    restart: unless-stopped
+    cpu_shares: 512
+    environment:
+      - TZ=Asia/Bangkok
+      - DB_HOSTNAME=immich-database
+      - DB_USERNAME=immich
+      - DB_PASSWORD=0804497089Opal!
+      - DB_DATABASE_NAME=immich
+      - REDIS_HOSTNAME=immich-redis
+    volumes:
+      - /mnt/591f037c-255b-474b-bbc4-ac34dbe43c38/immich:/data
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "2283:2283"
+    depends_on:
+      - immich-redis
+      - immich-database
+    networks:
+      - homelab
+
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:release
+    container_name: immich_machine_learning
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    cpu_shares: 512
+    environment:
+      - TZ=Asia/Bangkok
+      - DB_HOSTNAME=immich-database
+      - DB_USERNAME=immich
+      - DB_PASSWORD=0804497089Opal!
+      - DB_DATABASE_NAME=immich
+      - REDIS_HOSTNAME=immich-redis
+    devices:
+      - /dev/dri:/dev/dri
+    volumes:
+      - immich-model-cache:/cache
+    networks:
+      - homelab
+
+  immich-redis:
+    image: docker.io/valkey/valkey:9
+    container_name: immich_redis
+    restart: unless-stopped
+    cpu_shares: 256
+    networks:
+      - homelab
+
+  immich-database:
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
+    container_name: immich_postgres
+    restart: unless-stopped
+    cpu_shares: 512
+    environment:
+      - TZ=Asia/Bangkok
+      - POSTGRES_USER=immich
+      - POSTGRES_PASSWORD=0804497089Opal!
+      - POSTGRES_DB=immich
+      - POSTGRES_INITDB_ARGS=--data-checksums
+    volumes:
+      - /home/op/Dockerapps_config/Configs/immich/database:/var/lib/postgresql/data
+    shm_size: 128mb
+    networks:
+      - homelab
+  # =================================================================
+  # 7. BOOKMARKS (LINKWARDEN)
+  # =================================================================
+
+  linkwarden:
+    image: ghcr.io/linkwarden/linkwarden:latest
+    container_name: linkwarden
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - TZ=Asia/Bangkok
+      - NEXTAUTH_URL=https://linkwarden.opaleiei.duckdns.org/api/v1/auth
+      - NEXTAUTH_SECRET=0804497089Opal!
+      - DATABASE_URL=postgresql://linkwarden:0804497089Opal!@linkwarden-db:5432/linkwarden
+      - MEILI_HOST=http://linkwarden-meilisearch:7700
+      - MEILI_MASTER_KEY=0804497089Opal!
+      - DISABLE_BROWSER=true
+    volumes:
+      - /home/op/Dockerapps_config/Configs/linkwarden/data:/data/data
+    ports:
+      - "3000:3000"
+    depends_on:
+      - linkwarden-db
+      - linkwarden-meilisearch
+    networks:
+      - homelab
+
+  linkwarden-meilisearch:
+    image: getmeili/meilisearch:v1.12.8
+    container_name: linkwarden_meilisearch
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - MEILI_MASTER_KEY=0804497089Opal!
+    volumes:
+      - /home/op/Dockerapps_config/Configs/linkwarden/meili_data:/meili_data
+    networks:
+      - homelab
+
+  linkwarden-db:
+    image: postgres:16-alpine
+    container_name: linkwarden_postgres
+    restart: unless-stopped
+    cpu_shares: 256
+    environment:
+      - TZ=Asia/Bangkok
+      - POSTGRES_USER=linkwarden
+      - POSTGRES_PASSWORD=0804497089Opal!
+      - POSTGRES_DB=linkwarden
+    volumes:
+      - /home/op/Dockerapps_config/Configs/linkwarden/pgdata:/var/lib/postgresql/data
+    networks:
+      - homelab
+# =================================================================
+# 7. LOCAL AI (OLLAMA + OPEN WEBUI)
+# =================================================================
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    cpu_shares: 768
+    ports:
+      - "11434:11434" # <--- Host Port : Container Port
+    environment:
+      - TZ=Asia/Bangkok
+      - OLLAMA_HOST=0.0.0.0:11434
+    volumes:
+      - /home/op/Dockerapps_config/Configs/ollama:/root/.ollama
+    networks:
+      - homelab
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    cpu_shares: 512
+    environment:
+      - TZ=Asia/Bangkok
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - ENABLE_OLLAMA_API=true
+      - WEBUI_URL=https://ai.opaleiei.duckdns.org
+    volumes:
+      - /home/op/Dockerapps_config/Configs/open-webui:/app/backend/data
+    depends_on:
+      - ollama
+    ports:
+      - "3001:8080"
+    networks:
+      - homelab
+
+# =================================================================
+# NETWORKS DEFINITIONS
+# =================================================================
+
+networks:
+  homelab:
+    driver: bridge
+  wg:
+    driver: bridge
+    enable_ipv6: true
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.42.42.0/24
+        - subnet: fdcc:ad94:bacf:61a3::/64
+  macvlan_lan:
+    driver: macvlan
+    driver_opts:
+      parent: enp3s0
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
+          gateway: 192.168.1.1
+
+volumes:
+  immich-model-cache:
